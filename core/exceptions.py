@@ -129,6 +129,31 @@ class OllamaNotAvailableError(LLMError):
         )
 
 
+class GeminiError(LLMError):
+    def __init__(self, reason: str) -> None:
+        super().__init__(f"Gemini LLM error: {reason}")
+
+
+class GeminiAuthError(GeminiError):
+    def __init__(self, message: str = "Gemini API key is invalid or not configured. Set GEMINI_API_KEY in .env") -> None:
+        super().__init__(message)
+
+
+class GeminiNetworkError(GeminiError):
+    def __init__(self, message: str = "Network error connecting to Gemini API. Please check your internet connection.") -> None:
+        super().__init__(message)
+
+
+class GeminiRateLimitError(GeminiError):
+    def __init__(self, message: str = "Gemini API rate limit exceeded. Please try again shortly.") -> None:
+        super().__init__(message)
+
+
+class OnlineSearchError(AIEngineError):
+    def __init__(self, message: str = "Online medical search failed.") -> None:
+        super().__init__(message)
+
+
 class NoEvidenceFoundError(AIEngineError):
     def __init__(self, query: str) -> None:
         super().__init__(

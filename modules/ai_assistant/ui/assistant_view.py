@@ -10,15 +10,15 @@ from pathlib import Path
 from typing import Optional, List
 from uuid import UUID
 
-from PySide6.QtCore import Qt, QThread, Signal, QTimer, QPointF, QPropertyAnimation
+from PySide6.QtCore import Qt, QThread, Signal, QTimer, QPointF, QPropertyAnimation, QUrl
 from PySide6.QtGui import (
-    QColor, QCursor, QPainter, QLinearGradient, QRadialGradient, QPen, QBrush, QFont
+    QColor, QCursor, QPainter, QLinearGradient, QRadialGradient, QPen, QBrush, QFont, QDesktopServices
 )
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTextEdit, 
     QLineEdit, QPushButton, QScrollArea, QFrame, QSizePolicy, 
     QGraphicsDropShadowEffect, QGraphicsOpacityEffect, QDialog,
-    QApplication, QMessageBox, QFileDialog
+    QApplication, QMessageBox, QFileDialog, QRadioButton, QButtonGroup
 )
 
 from ai_core.ai_engine import get_ai_engine
@@ -179,6 +179,21 @@ class EvidenceCard(QFrame):
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(6)
 
+        # Source Type Badge
+        source_type = getattr(src, "source_type", "local")
+        badge_text = "📄 Local Document"
+        badge_color = "#3b82f6"
+        if source_type == "online_guideline":
+            badge_text = f"🌐 {src.organization or 'Medical'} Guideline"
+            badge_color = "#10b981"
+        elif source_type == "grounding":
+            badge_text = f"🔍 {src.organization or 'Web'} Grounding"
+            badge_color = "#06b6d4"
+
+        badge_lbl = QLabel(badge_text)
+        badge_lbl.setStyleSheet(f"color: {badge_color}; font-size: 9.5px; font-weight: bold; background: rgba(255,255,255,0.04); padding: 2px 6px; border-radius: 4px; border: none;")
+        layout.addWidget(badge_lbl)
+
         # Title
         title_lbl = QLabel(src.document_title)
         title_lbl.setWordWrap(True)
@@ -186,25 +201,31 @@ class EvidenceCard(QFrame):
         layout.addWidget(title_lbl)
 
         # Meta Parameters
-        cat_lbl = QLabel(f"Category: {src.category}")
-        cat_lbl.setStyleSheet("color: rgba(255, 255, 255, 0.5); font-size: 10px; border: none; background: transparent;")
-        layout.addWidget(cat_lbl)
+        if getattr(src, "organization", None):
+            org_lbl = QLabel(f"Authority: {src.organization}")
+            org_lbl.setStyleSheet("color: rgba(255, 255, 255, 0.5); font-size: 10px; border: none; background: transparent;")
+            layout.addWidget(org_lbl)
+        else:
+            cat_lbl = QLabel(f"Category: {src.category}")
+            cat_lbl.setStyleSheet("color: rgba(255, 255, 255, 0.5); font-size: 10px; border: none; background: transparent;")
+            layout.addWidget(cat_lbl)
 
-        sec_lbl = QLabel("Section: Clinical Overview")
-        sec_lbl.setStyleSheet("color: rgba(255, 255, 255, 0.5); font-size: 10px; border: none; background: transparent;")
-        layout.addWidget(sec_lbl)
-
-        page_lbl = QLabel(f"Page: {src.page_number}")
-        page_lbl.setStyleSheet("color: rgba(255, 255, 255, 0.5); font-size: 10px; border: none; background: transparent;")
-        layout.addWidget(page_lbl)
+        if getattr(src, "publication_date", None):
+            pub_lbl = QLabel(f"Published: {src.publication_date}")
+            pub_lbl.setStyleSheet("color: rgba(255, 255, 255, 0.5); font-size: 10px; border: none; background: transparent;")
+            layout.addWidget(pub_lbl)
+        elif src.page_number:
+            page_lbl = QLabel(f"Page: {src.page_number}")
+            page_lbl.setStyleSheet("color: rgba(255, 255, 255, 0.5); font-size: 10px; border: none; background: transparent;")
+            layout.addWidget(page_lbl)
 
         # Snippet header
-        ev_header = QLabel("Evidence:")
+        ev_header = QLabel("Evidence Snippet:")
         ev_header.setStyleSheet("color: rgba(255, 255, 255, 0.7); font-size: 10.5px; font-weight: bold; border: none; background: transparent;")
         layout.addWidget(ev_header)
 
         # Snippet body
-        snippet = QLabel(src.chunk_text[:140] + "..." if len(src.chunk_text) > 140 else src.chunk_text)
+        snippet = QLabel(src.chunk_text[:150] + "..." if len(src.chunk_text) > 150 else src.chunk_text)
         snippet.setWordWrap(True)
         snippet.setStyleSheet("color: rgba(255, 255, 255, 0.6); font-size: 10.5px; font-style: italic; border: none; line-height: 1.4; background: transparent;")
         layout.addWidget(snippet)
@@ -213,20 +234,35 @@ class EvidenceCard(QFrame):
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(6)
 
-        open_btn = QPushButton("Open PDF")
-        open_btn.setFixedHeight(24)
-        open_btn.setCursor(Qt.PointingHandCursor)
-        open_btn.setStyleSheet(self._btn_style())
-        open_btn.clicked.connect(self._open_pdf)
+        if getattr(src, "url", None):
+            url_btn = QPushButton("🌐 Open Source URL")
+            url_btn.setFixedHeight(24)
+            url_btn.setCursor(Qt.PointingHandCursor)
+            url_btn.setStyleSheet("""
+                QPushButton {
+                    background: rgba(16, 185, 129, 0.15); color: #10b981;
+                    border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 4px;
+                    font-size: 9.5px; font-weight: bold;
+                }
+                QPushButton:hover { background: rgba(16, 185, 129, 0.25); color: white; }
+            """)
+            url_btn.clicked.connect(self._open_url)
+            btn_layout.addWidget(url_btn)
+        else:
+            open_btn = QPushButton("Open PDF")
+            open_btn.setFixedHeight(24)
+            open_btn.setCursor(Qt.PointingHandCursor)
+            open_btn.setStyleSheet(self._btn_style())
+            open_btn.clicked.connect(self._open_pdf)
+            btn_layout.addWidget(open_btn)
         
-        view_btn = QPushButton("View Full Evidence")
+        view_btn = QPushButton("View Full Text")
         view_btn.setFixedHeight(24)
         view_btn.setCursor(Qt.PointingHandCursor)
         view_btn.setStyleSheet(self._btn_style())
         view_btn.clicked.connect(self._view_full)
-
-        btn_layout.addWidget(open_btn)
         btn_layout.addWidget(view_btn)
+
         layout.addLayout(btn_layout)
 
     def _btn_style(self) -> str:
@@ -238,6 +274,10 @@ class EvidenceCard(QFrame):
             }
             QPushButton:hover { background: rgba(59, 130, 246, 0.12); color: white; }
         """
+
+    def _open_url(self) -> None:
+        if getattr(self.src, "url", None):
+            QDesktopServices.openUrl(QUrl(self.src.url))
 
     def _open_pdf(self) -> None:
         try:
@@ -270,10 +310,23 @@ class AIResponseCard(QFrame):
     """Premium floating card container for AI responses containing references and disclaimers."""
     clicked = Signal(object)  # Emits self when clicked for active syncing
     
-    def __init__(self, answer: str, sources: list[SourceReference], parent=None) -> None:
+    def __init__(
+        self,
+        answer: str,
+        sources: list[SourceReference],
+        parent=None,
+        provider: str = "gemini",
+        model_used: str = "",
+        online_search_used: bool = False,
+        medical_topic: Optional[str] = None,
+    ) -> None:
         super().__init__(parent)
         self._answer = answer
         self._sources = sources
+        self._provider = provider
+        self._model_used = model_used
+        self._online_search_used = online_search_used
+        self._medical_topic = medical_topic
         self._expanded = True
         self._selected = False
         
@@ -303,14 +356,40 @@ class AIResponseCard(QFrame):
 
         # Header Row
         header = QHBoxLayout()
-        ai_icon = QLabel("🤖")
+        header.setSpacing(8)
+
+        ai_icon = QLabel("🤖" if self._provider == "gemini" else "🖥️")
         ai_icon.setStyleSheet("font-size: 16px; border: none; background: transparent;")
+        header.addWidget(ai_icon)
         
         title_lbl = QLabel("Clinical AI Response")
         title_lbl.setStyleSheet("color: white; font-family: 'Segoe UI', Inter; font-size: 13.5px; font-weight: bold; border: none; background: transparent;")
-        
-        header.addWidget(ai_icon)
         header.addWidget(title_lbl)
+
+        # Provider Badge
+        if self._provider == "gemini":
+            badge_text = f"🌐 Gemini Online ({self._model_used or 'gemini-2.5-flash'})"
+            badge_color = "#06b6d4"
+        else:
+            badge_text = f"🖥️ Ollama Local ({self._model_used or 'llama3.2'})"
+            badge_color = "#8b5cf6"
+
+        prov_badge = QLabel(badge_text)
+        prov_badge.setStyleSheet(f"color: {badge_color}; font-size: 9.5px; font-weight: bold; background: rgba(255,255,255,0.05); padding: 2px 7px; border-radius: 4px; border: none;")
+        header.addWidget(prov_badge)
+
+        # Online Search Grounding Badge
+        if self._online_search_used:
+            search_badge = QLabel("🔍 Verified Guidelines")
+            search_badge.setStyleSheet("color: #10b981; font-size: 9.5px; font-weight: bold; background: rgba(16, 185, 129, 0.12); padding: 2px 7px; border-radius: 4px; border: none;")
+            header.addWidget(search_badge)
+
+        # Follow-Up Topic Badge
+        if self._medical_topic and len(self._medical_topic) < 30:
+            topic_badge = QLabel(f"⚕ {self._medical_topic}")
+            topic_badge.setStyleSheet("color: rgba(255,255,255,0.7); font-size: 9.5px; font-weight: 500; background: rgba(255,255,255,0.03); padding: 2px 7px; border-radius: 4px; border: none;")
+            header.addWidget(topic_badge)
+
         header.addStretch()
 
         # Expand/Collapse Control
@@ -333,42 +412,69 @@ class AIResponseCard(QFrame):
         self.content_widget.setStyleSheet("background: transparent; border: none;")
         self.content_layout = QVBoxLayout(self.content_widget)
         self.content_layout.setContentsMargins(0, 0, 0, 0)
-        self.content_layout.setSpacing(6)
+        self.content_layout.setSpacing(8)
 
-        # Split text: first paragraph as Overview, rest as Evidence Summary
-        paragraphs = [p.strip() for p in self._answer.split("\n\n") if p.strip()]
-        if len(paragraphs) > 1:
-            overview_text = paragraphs[0]
-            summary_text = "\n\n".join(paragraphs[1:])
-        elif paragraphs:
-            overview_text = paragraphs[0]
-            summary_text = "Detailed documentation matches the clinical overview above."
+        # Parse sections if structured with markdown headers '###'
+        import re
+        has_structured_sections = bool(re.search(r"^###\s+", self._answer, flags=re.MULTILINE))
+
+        if has_structured_sections:
+            raw_parts = re.split(r"(^###\s+[^\n]+)", self._answer, flags=re.MULTILINE)
+            # raw_parts has [intro, header1, body1, header2, body2, ...]
+            idx = 1
+            added_refs = False
+            while idx < len(raw_parts):
+                header = raw_parts[idx].replace("###", "").strip()
+                body = raw_parts[idx+1].strip() if idx+1 < len(raw_parts) else ""
+                idx += 2
+
+                h_lower = header.lower()
+                if "direct answer" in h_lower:
+                    color = "#10b981"
+                elif "explanation" in h_lower:
+                    color = "#06b6d4"
+                elif "guideline" in h_lower:
+                    color = "#8b5cf6"
+                elif "precaution" in h_lower or "recommendation" in h_lower:
+                    color = "#f59e0b"
+                elif "reference" in h_lower:
+                    color = "#38bdf8"
+                    added_refs = True
+                elif "disclaimer" in h_lower:
+                    color = "#eab308"
+                else:
+                    color = "#06b6d4"
+
+                self._add_section(header, body, color)
+
+            # Ensure References section lists real source links if not present in markdown
+            if not added_refs and self._sources:
+                self._render_references_section()
         else:
-            overview_text = "No clinical overview parameters retrieved."
-            summary_text = "No evidence summary available."
+            # Fallback to paragraph splitting for unstructured output
+            paragraphs = [p.strip() for p in self._answer.split("\n\n") if p.strip()]
+            if len(paragraphs) > 1:
+                overview_text = paragraphs[0]
+                summary_text = "\n\n".join(paragraphs[1:])
+            elif paragraphs:
+                overview_text = paragraphs[0]
+                summary_text = "Detailed documentation matches the clinical overview above."
+            else:
+                overview_text = "No clinical overview parameters retrieved."
+                summary_text = "No evidence summary available."
 
-        # 🧠 Clinical Overview Section
-        self._add_section("🧠 Clinical Overview", overview_text, "#06b6d4")
-        
-        # 📄 Evidence Summary Section
-        self._add_section("📄 Evidence Summary", summary_text, "#a855f7")
+            self._add_section("🧠 Clinical Overview", overview_text, "#06b6d4")
+            self._add_section("📄 Evidence Summary", summary_text, "#a855f7")
+            self._render_references_section()
 
-        # 📚 References Section
-        ref_text = ""
-        if self._sources:
-            ref_lines = [f"• {src.document_title} (Page {src.page_number})" for src in self._sources]
-            ref_text = "\n".join(ref_lines)
-        else:
-            ref_text = "• No external reference documents cited for this response."
-        self._add_section("📚 References", ref_text, "#3b82f6")
-
-        # ⚠️ Medical Disclaimer Section
-        disclaimer_text = (
-            "This synthesized information is retrieved from indexed medical reference guidelines "
-            "and is intended for informational purposes only. It does not constitute professional medical "
-            "advice, diagnosis, or treatment. Always consult with a qualified healthcare provider for clinical decisions."
-        )
-        self._add_section("⚠️ Medical Disclaimer", disclaimer_text, "#eab308")
+        # Ensure safety disclaimer is always rendered
+        if "SAFETY DISCLAIMER" not in self._answer.upper():
+            disclaimer_text = (
+                "This synthesized information is retrieved from indexed medical guidelines "
+                "and is intended for informational and educational discovery only. It does not constitute a "
+                "clinical diagnosis or medical prescription. Always consult a qualified physician for clinical decisions."
+            )
+            self._add_section("⚠️ Medical Safety Disclaimer", disclaimer_text, "#eab308")
 
         self.card_layout.addWidget(self.content_widget)
 
@@ -473,9 +579,53 @@ class AIResponseCard(QFrame):
         title_lbl.setStyleSheet(f"color: {color_hex}; font-family: 'Segoe UI', Inter; font-size: 12px; font-weight: 700; border: none; background: transparent;")
         self.content_layout.addWidget(title_lbl)
 
-        content_lbl = QLabel(content)
+        content_lbl = QLabel()
         content_lbl.setWordWrap(True)
+        content_lbl.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.LinksAccessibleByMouse)
+        content_lbl.setOpenExternalLinks(True)
+        
+        # Format markdown links into clickable HTML links
+        import re
+        formatted = re.sub(
+            r'\[([^\]]+)\]\((https?://[^\)]+)\)',
+            r'<a href="\2" style="color: #38bdf8; text-decoration: underline;">\1</a>',
+            content,
+        )
+        if "<a href=" in formatted:
+            formatted = formatted.replace("\n", "<br>")
+            content_lbl.setText(f"<span>{formatted}</span>")
+        else:
+            content_lbl.setText(content)
+
         content_lbl.setStyleSheet("color: rgba(255,255,255,0.85); font-family: 'Segoe UI', Inter; font-size: 12.5px; border: none; background: transparent; line-height: 1.5;")
+        self.content_layout.addWidget(content_lbl)
+
+    def _render_references_section(self) -> None:
+        if not self._sources:
+            self._add_section("📚 Source References", "• No external reference documents cited for this response.", "#38bdf8")
+            return
+
+        ref_lines = []
+        for src in self._sources:
+            if getattr(src, "url", None):
+                org = getattr(src, "organization", None) or src.category
+                date = f" ({src.publication_date})" if getattr(src, "publication_date", None) else ""
+                ref_lines.append(f"• <b>[{org}]</b> {src.document_title}{date}<br>&nbsp;&nbsp;&nbsp;🔗 <a href='{src.url}' style='color: #38bdf8; text-decoration: underline;'>{src.url}</a>")
+            else:
+                ref_lines.append(f"• <b>[Local KB]</b> {src.document_title} (Page {src.page_number})")
+
+        ref_html = "<br>".join(ref_lines)
+        if self.content_layout.count() > 0:
+            self.content_layout.addSpacing(10)
+        title_lbl = QLabel("📚 Source References")
+        title_lbl.setStyleSheet("color: #38bdf8; font-family: 'Segoe UI', Inter; font-size: 12px; font-weight: 700; border: none; background: transparent;")
+        self.content_layout.addWidget(title_lbl)
+
+        content_lbl = QLabel(f"<span>{ref_html}</span>")
+        content_lbl.setWordWrap(True)
+        content_lbl.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.LinksAccessibleByMouse)
+        content_lbl.setOpenExternalLinks(True)
+        content_lbl.setStyleSheet("color: rgba(255,255,255,0.85); font-family: 'Segoe UI', Inter; font-size: 12px; border: none; background: transparent; line-height: 1.6;")
         self.content_layout.addWidget(content_lbl)
 
     def _btn_action_style(self) -> str:
@@ -567,16 +717,32 @@ class WorkerThread(QThread):
     finished = Signal(object)
     error = Signal(str)
 
-    def __init__(self, query: str, user_id, category: Optional[str] = None, parent=None):
+    def __init__(
+        self,
+        query: str,
+        user_id,
+        category: Optional[str] = None,
+        provider: str = "gemini",
+        online_search: bool = True,
+        parent=None,
+    ):
         super().__init__(parent)
         self.query = query
         self.user_id = user_id
         self.category = category
+        self.provider = provider
+        self.online_search = online_search
 
     def run(self):
         try:
             ai = get_ai_engine()
-            response = ai.query(self.query, user_id=self.user_id, category=self.category)
+            response = ai.query(
+                self.query,
+                user_id=self.user_id,
+                category=self.category,
+                provider=self.provider,
+                online_search=self.online_search,
+            )
             self.finished.emit(response)
         except Exception as e:
             self.error.emit(str(e))
@@ -589,6 +755,8 @@ class AssistantView(QWidget):
         super().__init__()
         self._user = current_user
         self._ai = get_ai_engine()
+        self._active_provider: str = self._ai.get_llm_provider() or "gemini"
+        self._online_search_enabled: bool = True
         self._active_category: Optional[str] = None
         self._selected_card: Optional[AIResponseCard] = None
         self._setup_ui()
@@ -598,9 +766,9 @@ class AssistantView(QWidget):
         main_layout.setContentsMargins(30, 30, 30, 30)
         main_layout.setSpacing(20)
 
-        # ── 1. LEFT PANEL: SCOPE FILTER ──
+        # ── 1. LEFT PANEL: SCOPE FILTER & LLM ENGINE ──
         left_panel = QFrame()
-        left_panel.setFixedWidth(230)
+        left_panel.setFixedWidth(240)
         left_panel.setStyleSheet("""
             QFrame {
                 background: rgba(255, 255, 255, 0.02);
@@ -609,16 +777,76 @@ class AssistantView(QWidget):
             }
         """)
         left_layout = QVBoxLayout(left_panel)
-        left_layout.setContentsMargins(18, 20, 18, 20)
-        left_layout.setSpacing(14)
+        left_layout.setContentsMargins(16, 18, 16, 18)
+        left_layout.setSpacing(12)
+
+        # LLM Engine Selector Section
+        llm_title = QLabel("Clinical LLM Engine")
+        llm_title.setStyleSheet("color: white; font-size: 13.5px; font-weight: bold; border: none;")
+        left_layout.addWidget(llm_title)
+
+        provider_box = QFrame()
+        provider_box.setStyleSheet("background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px;")
+        pbox_layout = QVBoxLayout(provider_box)
+        pbox_layout.setContentsMargins(10, 8, 10, 8)
+        pbox_layout.setSpacing(6)
+
+        self.btn_gemini = QRadioButton("🌐 Gemini Online")
+        self.btn_gemini.setCursor(Qt.PointingHandCursor)
+        self.btn_gemini.setStyleSheet("color: #38bdf8; font-size: 11.5px; font-weight: 600; border: none; background: transparent;")
+        self.btn_gemini.setChecked(self._active_provider == "gemini")
+        self.btn_gemini.toggled.connect(self._on_provider_changed)
+        pbox_layout.addWidget(self.btn_gemini)
+
+        self.btn_ollama = QRadioButton("🖥️ Ollama Local (Llama 3.2)")
+        self.btn_ollama.setCursor(Qt.PointingHandCursor)
+        self.btn_ollama.setStyleSheet("color: rgba(255,255,255,0.8); font-size: 11px; font-weight: 500; border: none; background: transparent;")
+        self.btn_ollama.setChecked(self._active_provider == "ollama")
+        pbox_layout.addWidget(self.btn_ollama)
+
+        gemini_ready = self._ai.is_gemini_available
+        self.status_lbl = QLabel("🟢 Gemini Online Ready" if gemini_ready else "⚠️ Set GEMINI_API_KEY in .env")
+        status_color = "#10b981" if gemini_ready else "#f59e0b"
+        self.status_lbl.setStyleSheet(f"color: {status_color}; font-size: 9.5px; border: none; font-style: italic; background: transparent;")
+        pbox_layout.addWidget(self.status_lbl)
+
+        left_layout.addWidget(provider_box)
+
+        # Online Medical Search Grounding Toggle
+        search_box = QFrame()
+        search_box.setStyleSheet("background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 10px;")
+        sbox_layout = QHBoxLayout(search_box)
+        sbox_layout.setContentsMargins(10, 6, 10, 6)
+
+        s_text_box = QVBoxLayout()
+        s_title = QLabel("Online Guidelines")
+        s_title.setStyleSheet("color: white; font-size: 11.5px; font-weight: bold; border: none; background: transparent;")
+        s_sub = QLabel("WHO / CDC / PubMed")
+        s_sub.setStyleSheet("color: rgba(255,255,255,0.45); font-size: 9.5px; border: none; background: transparent;")
+        s_text_box.addWidget(s_title)
+        s_text_box.addWidget(s_sub)
+        sbox_layout.addLayout(s_text_box)
+
+        self.online_search_toggle = ToggleSwitch()
+        self.online_search_toggle.checked = self._online_search_enabled
+        self.online_search_toggle.toggled.connect(self._on_search_toggled)
+        sbox_layout.addWidget(self.online_search_toggle)
+
+        left_layout.addWidget(search_box)
+
+        # Separator line
+        sep = QFrame()
+        sep.setFrameShape(QFrame.HLine)
+        sep.setStyleSheet("color: rgba(255,255,255,0.08); background: rgba(255,255,255,0.08); max-height: 1px;")
+        left_layout.addWidget(sep)
 
         left_lbl = QLabel("RAG Vector Scope")
-        left_lbl.setStyleSheet("color: white; font-size: 14.5px; font-weight: bold; border: none;")
+        left_lbl.setStyleSheet("color: white; font-size: 13.5px; font-weight: bold; border: none;")
         left_layout.addWidget(left_lbl)
 
-        desc_lbl = QLabel("Toggle scope filters to restrict semantic search nodes:")
+        desc_lbl = QLabel("Filter local knowledge repository:")
         desc_lbl.setWordWrap(True)
-        desc_lbl.setStyleSheet("color: rgba(255,255,255,0.4); font-size: 11px; border: none; line-height: 1.4;")
+        desc_lbl.setStyleSheet("color: rgba(255,255,255,0.4); font-size: 10.5px; border: none; line-height: 1.4;")
         left_layout.addWidget(desc_lbl)
 
         self.toggles: List[CategoryToggleRow] = []
@@ -806,14 +1034,55 @@ class AssistantView(QWidget):
                 self._active_category = None
 
     def _add_welcome_card(self) -> None:
+        ready = self._ai.is_gemini_available
+        status_msg = (
+            "Connected to Gemini 2.5 Flash Online and PubMed / WHO Guideline Retrieval."
+            if ready
+            else "Clinical Assistant Online. (Note: Add GEMINI_API_KEY in .env for Gemini Online mode, or use Ollama Local)."
+        )
         self._add_ai_card(
-            "Establishing connection to medical vector models. Send clinical symptoms parameter "
-            "queries to search internal databases and compile summaries grounded against direct evidence.",
-            []
+            f"Clinical Dialogue Core is online. {status_msg} "
+            "Send clinical queries to search indexed medical knowledge and synthesize verified evidence.",
+            [],
+            provider=self._active_provider,
+            model_used="gemini-2.5-flash" if ready else "mediverse-core",
         )
 
-    def _add_ai_card(self, answer: str, sources: list[SourceReference]) -> None:
-        card = AIResponseCard(answer, sources, parent=self.chat_container)
+    def _on_provider_changed(self) -> None:
+        if self.btn_gemini.isChecked():
+            self._active_provider = "gemini"
+            self._ai.set_llm_provider("gemini")
+            ready = self._ai.is_gemini_available
+            self.status_lbl.setText("🟢 Gemini Online Ready" if ready else "⚠️ Set GEMINI_API_KEY in .env")
+            self.status_lbl.setStyleSheet(f"color: {'#10b981' if ready else '#f59e0b'}; font-size: 9.5px; border: none; font-style: italic; background: transparent;")
+        else:
+            self._active_provider = "ollama"
+            self._ai.set_llm_provider("ollama")
+            self.status_lbl.setText("🖥️ Ollama Local (Llama 3.2)")
+            self.status_lbl.setStyleSheet("color: #8b5cf6; font-size: 9.5px; border: none; font-style: italic; background: transparent;")
+
+    def _on_search_toggled(self, checked: bool) -> None:
+        self._online_search_enabled = checked
+        logger.info("Online search grounding set to: %s", checked)
+
+    def _add_ai_card(
+        self,
+        answer: str,
+        sources: list[SourceReference],
+        provider: str = "gemini",
+        model_used: str = "",
+        online_search_used: bool = False,
+        medical_topic: Optional[str] = None,
+    ) -> None:
+        card = AIResponseCard(
+            answer=answer,
+            sources=sources,
+            parent=self.chat_container,
+            provider=provider,
+            model_used=model_used,
+            online_search_used=online_search_used,
+            medical_topic=medical_topic,
+        )
         card.clicked.connect(self._select_card)
         
         row = ChatRow(card, is_user=False)
@@ -878,15 +1147,35 @@ class AssistantView(QWidget):
         self.input_field.setEnabled(False)
         self.generate_btn.setEnabled(False)
         
-        # Wrapped thinking indicator row to prevent layout spacing inconsistencies
-        self.thinking_lbl = QLabel("AI core aligning vectors and retrieving citation logs...")
-        self.thinking_lbl.setStyleSheet("color: rgba(255, 255, 255, 0.4); font-size: 11px; font-style: italic; border: none; background: transparent;")
+        # Wrapped thinking indicator row with dynamic message
+        provider = self._active_provider
+        online_search = self._online_search_enabled
+
+        if provider == "gemini":
+            if online_search:
+                thinking_text = "🌐 Gemini Online retrieving verified medical guidelines (PubMed/WHO) & grounding..."
+            else:
+                thinking_text = "🌐 Gemini Online synthesizing response from indexed medical repository..."
+        else:
+            if online_search:
+                thinking_text = "🖥️ Ollama Local querying local vectors & online guidelines..."
+            else:
+                thinking_text = "🖥️ Ollama Local aligning vectors in indexed repository..."
+
+        self.thinking_lbl = QLabel(thinking_text)
+        self.thinking_lbl.setStyleSheet("color: rgba(255, 255, 255, 0.5); font-size: 11px; font-style: italic; border: none; background: transparent;")
         
         self.thinking_row = ChatRow(self.thinking_lbl, is_user=False)
         self.chat_layout.addWidget(self.thinking_row)
         self._scroll_to_bottom()
         
-        self.worker = WorkerThread(text, self._user.id, category=self._active_category)
+        self.worker = WorkerThread(
+            query=text,
+            user_id=self._user.id,
+            category=self._active_category,
+            provider=provider,
+            online_search=online_search,
+        )
         self.worker.finished.connect(self._on_ai_response)
         self.worker.error.connect(self._on_ai_error)
         self.worker.start()
@@ -897,8 +1186,15 @@ class AssistantView(QWidget):
             self.thinking_row.deleteLater()
             self.thinking_row = None
 
-        # Add card to dialogue stream
-        self._add_ai_card(response.answer, response.sources)
+        # Add card to dialogue stream with full provider metadata
+        self._add_ai_card(
+            answer=response.answer,
+            sources=response.sources,
+            provider=response.provider,
+            model_used=response.model_used,
+            online_search_used=response.online_search_used,
+            medical_topic=response.follow_up_topic,
+        )
         logger.info("AI Response Rendered successfully")
         logger.info("Chat History Updated with AI response")
         
@@ -913,13 +1209,35 @@ class AssistantView(QWidget):
             self.thinking_row.deleteLater()
             self.thinking_row = None
 
-        self._add_ai_card(f"An error occurred: {err}", [])
+        # Provide friendly actionable guidance for API key or network issues
+        friendly_err = err
+        if "GEMINI_API_KEY" in err or "API key" in err or "Auth" in err:
+            friendly_err = (
+                "⚠️ **Gemini API Configuration Required**\n\n"
+                f"{err}\n\n"
+                "**Setup Instructions:**\n"
+                "1. Add `GEMINI_API_KEY=your_key` to your `.env` file.\n"
+                "2. Or select **🖥️ Ollama Local (Llama 3.2)** in the left panel to use local AI models."
+            )
+        elif "network" in err.lower() or "internet" in err.lower() or "connection" in err.lower():
+            friendly_err = (
+                "🌐 **Network / Connectivity Issue**\n\n"
+                f"{err}\n\n"
+                "Unable to connect to the online service. Please verify your internet connection or switch to **🖥️ Ollama Local**."
+            )
+
+        self._add_ai_card(
+            answer=friendly_err,
+            sources=[],
+            provider=self._active_provider,
+        )
         
         self.input_field.setEnabled(True)
         self.generate_btn.setEnabled(True)
         self.input_field.setFocus()
 
     def _clear_chat(self) -> None:
+        self._ai.reset_conversation()
         self._selected_card = None
         while self.chat_layout.count():
             item = self.chat_layout.takeAt(0)

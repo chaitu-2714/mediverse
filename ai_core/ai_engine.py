@@ -13,6 +13,9 @@ from ai_core.engines.nlp_engine import NLPEngine
 from ai_core.engines.embedding_engine import EmbeddingEngine
 from ai_core.engines.semantic_search_engine import SemanticSearchEngine
 from ai_core.engines.llm_engine import LLMEngine
+from ai_core.engines.gemini_engine import GeminiEngine
+from ai_core.engines.medical_search_engine import MedicalGuidelineSearchEngine
+from ai_core.conversation.conversation_manager import ConversationManager
 from ai_core.engines.rag_engine import RAGEngine
 from ai_core.engines.evidence_engine import EvidenceEngine
 
@@ -42,8 +45,17 @@ class AIEngine:
         self.nlp = NLPEngine()
         self.embedding = EmbeddingEngine()
         self.llm = LLMEngine()
+        self.gemini = GeminiEngine()
+        self.medical_search = MedicalGuidelineSearchEngine()
+        self.conversation = ConversationManager()
         self.search = SemanticSearchEngine(self.embedding)
-        self.rag = RAGEngine(self.search, self.llm)
+        self.rag = RAGEngine(
+            search_engine=self.search,
+            llm_engine=self.llm,
+            gemini_engine=self.gemini,
+            medical_search_engine=self.medical_search,
+            conversation_manager=self.conversation,
+        )
         self.evidence = EvidenceEngine()
         
         # 2. Initialize pipelines
@@ -91,9 +103,42 @@ class AIEngine:
         """Run a document through the complete intelligence pipeline."""
         self.document_pipeline.process_document(document_id, on_progress)
 
-    def query(self, query: str, user_id: Optional[UUID] = None, category: Optional[str] = None) -> AIResponse:
-        """Execute a natural language query against the knowledge repository."""
-        return self.query_pipeline.execute_query(query, user_id, category)
+    def query(
+        self,
+        query: str,
+        user_id: Optional[UUID] = None,
+        category: Optional[str] = None,
+        provider: Optional[str] = None,
+        online_search: Optional[bool] = None,
+    ) -> AIResponse:
+        """Execute a natural language query against the knowledge repository and guidelines."""
+        return self.query_pipeline.execute_query(
+            query=query,
+            user_id=user_id,
+            category_filter=category,
+            provider=provider,
+            online_search=online_search,
+        )
+
+    def set_llm_provider(self, provider: str) -> None:
+        """Switch between 'gemini' and 'ollama'."""
+        self.rag.set_provider(provider)
+
+    def get_llm_provider(self) -> str:
+        """Get currently active LLM provider."""
+        return self.rag.active_provider
+
+    def reset_conversation(self) -> None:
+        """Reset multi-turn conversation memory."""
+        self.conversation.reset()
+
+    @property
+    def is_gemini_available(self) -> bool:
+        return self.gemini.is_available
+
+    @property
+    def is_ollama_available(self) -> bool:
+        return self.llm.is_available
 
     def search_only(self, query: str, category: Optional[str] = None, top_k: int = 10) -> list:
         """Perform semantic search without LLM generation."""

@@ -36,12 +36,19 @@ class QueryPipeline:
         query: str,
         user_id: Optional[UUID] = None,
         category_filter: Optional[str] = None,
+        provider: Optional[str] = None,
+        online_search: Optional[bool] = None,
     ) -> AIResponse:
         """Execute a query and log the results."""
-        logger.info(f"Executing query: '{query}' for user: {user_id}")
+        logger.info(f"Executing query: '{query}' for user: {user_id} (provider={provider}, online={online_search})")
         
         # 1. RAG Engine builds context and queries LLM
-        response = self._rag.query(query, category_filter=category_filter)
+        response = self._rag.query(
+            query,
+            category_filter=category_filter,
+            provider=provider,
+            online_search=online_search,
+        )
         
         # 2. Verify and format evidence
         verified_response = self._evidence.verify_response(response)

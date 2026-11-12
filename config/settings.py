@@ -56,6 +56,14 @@ class AppSettings(BaseSettings):
     ollama_timeout: int = Field(default=120)
     ollama_enabled: bool = Field(default=True)
 
+    # ── Gemini Online LLM ─────────────────────────────────────
+    gemini_api_key: Optional[str] = Field(default=None, validation_alias="GEMINI_API_KEY")
+    gemini_model: str = Field(default="gemini-3.5-flash")
+    gemini_timeout: int = Field(default=60)
+    gemini_search_grounding: bool = Field(default=True)
+    llm_provider: str = Field(default="gemini")  # "gemini" or "ollama"
+    online_search_enabled: bool = Field(default=True)
+
     # ── Embeddings ────────────────────────────────────────────
     embedding_model: str = Field(default="all-MiniLM-L6-v2")
     embedding_batch_size: int = Field(default=32)

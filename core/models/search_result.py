@@ -17,6 +17,10 @@ class SourceReference:
     chunk_text: str
     similarity_score: float
     chunk_id: Optional[str] = None
+    url: Optional[str] = None
+    organization: Optional[str] = None
+    publication_date: Optional[str] = None
+    source_type: str = "local"  # "local", "online_guideline", "grounding"
 
     @property
     def score_pct(self) -> int:
@@ -65,6 +69,10 @@ class AIResponse:
     processing_time_ms: int
     model_used: str = "llama3.2"
     has_evidence: bool = True
+    provider: str = "ollama"  # "ollama" or "gemini"
+    online_search_used: bool = False
+    search_queries: list[str] = field(default_factory=list)
+    follow_up_topic: Optional[str] = None
 
     NO_EVIDENCE_MESSAGE = (
         "No supporting evidence found in the indexed knowledge repository. "
@@ -94,13 +102,21 @@ class AIResponse:
             "confidence_label": self.confidence_label,
             "processing_time_ms": self.processing_time_ms,
             "model_used": self.model_used,
+            "provider": self.provider,
             "has_evidence": self.has_evidence,
+            "online_search_used": self.online_search_used,
+            "search_queries": self.search_queries,
+            "follow_up_topic": self.follow_up_topic,
             "sources": [
                 {
                     "document_title": s.document_title,
                     "page_number": s.page_number,
                     "similarity_score": s.similarity_score,
                     "chunk_text": s.chunk_text[:200],
+                    "url": s.url,
+                    "organization": s.organization,
+                    "publication_date": s.publication_date,
+                    "source_type": s.source_type,
                 }
                 for s in self.sources
             ],
